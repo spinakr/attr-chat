@@ -1,6 +1,8 @@
-import socket, select
+import socket, select, json
 from charm.toolbox.pairinggroup import PairingGroup,ZR,G1,G2,GT,pair
 from charm.schemes.abenc import abenc_waters09
+from charm.core.engine.util import objectToBytes,bytesToObject
+
  
 #Function to broadcast chat messages to all connected clients
 def broadcast_data (sock, message):
@@ -13,15 +15,26 @@ def broadcast_data (sock, message):
                 # broken socket connection may be, chat client pressed ctrl+c for example
                 socket.close()
                 CONNECTION_LIST.remove(socket)
+
  
-def main():
+
+
+def prompt(msg) :
+    sys.stdout.write(msg)
+    sys.stdout.flush()
      
+if __name__ == '__main__':
 
     groupObj = PairingGroup('SS512')
 
+    cpabe = abenc_waters09.CPabe09(groupObj)
+    (msk, pk) = cpabe.setup()
+    roomPolicy = '((ONE or THREE) and (TWO or FOUR))'
 
     # List to keep track of socket descriptors
     CONNECTION_LIST = []
+    #list of current encapsulations for the room
+    encapsulations = []
     RECV_BUFFER = 4096 # Advisable to keep it as an exponent of 2
     PORT = 5000
      
@@ -46,18 +59,22 @@ def main():
                 # Handle the case in which there is a new connection recieved through server_socket
                 sockfd, addr = server_socket.accept()
                 CONNECTION_LIST.append(sockfd)
-                print "Client (%s, %s) connected" % addr
+                sockfd.send(roomPolicy) #send the room policy
+                encap = bytesToObject(sockfd.recv(RECV_BUFFER), groupObj) #receive the encapsulation
+                print 'Received one encapsulation: {}'.format(encap)
+                sockfd.send(objectToBytes(encapsulations, groupObj)) #send all the current encapsulations
+                encapsulations.append(encap) #add the encapsulation to current list
+                print "Client {} connected".format(addr)
                  
-                broadcast_data(sockfd, "[%s:%s] entered room\n" % addr)
-             
+                broadcast_data(sockfd, "{} entered room\n{}".format(addr, encap))
+
             #Some incoming message from a client
             else:
                 # Data recieved from client, process it
                 try:
-                    #In Windows, sometimes when a TCP program closes abruptly,
-                    # a "Connection reset by peer" exception will be thrown
                     data = sock.recv(RECV_BUFFER)
                     if data:
+                        print sock, "\r" + '<' + str(sock.getpeername()) + '> ' + data
                         broadcast_data(sock, "\r" + '<' + str(sock.getpeername()) + '> ' + data)                
                  
                 except:
@@ -68,7 +85,3 @@ def main():
                     continue
      
     server_socket.close()
-
-if __name__ == '__main__':
-    debug = True
-    main()

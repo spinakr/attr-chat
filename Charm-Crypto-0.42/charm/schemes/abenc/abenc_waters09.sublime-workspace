@@ -1,0 +1,211 @@
+{
+	"auto_complete":
+	{
+		"selected_items":
+		[
+		]
+	},
+	"buffers":
+	[
+		{
+			"contents": "'''\nBrent Waters (Pairing-based)\n \n| From: \"Ciphertext-Policy Attribute-Based Encryption: An Expressive, Efficient, and Provably Secure Realization\", Appendix C.\n| Published in: 2008\n| Available from: http://eprint.iacr.org/2008/290.pdf\n| Notes: Security Assumption: parallel q-DBDHE. The sole disadvantage of this scheme is the high number of pairings\n| that must be computed during the decryption process (2 + N) for N attributes mathing in the key.\n\n* type:            ciphertext-policy attribute-based encryption (public key)\n* setting:        Pairing\n\n:Authors:    J Ayo Akinyele\n:Date:            11/2010\n'''\nfrom __future__ import print_function\nfrom charm.toolbox.pairinggroup import PairingGroup,ZR,G1,G2,GT,pair\nfrom charm.toolbox.secretutil import SecretUtil\nfrom charm.toolbox.ABEnc import ABEnc\n\ndebug = False\nclass CPabe09(ABEnc):\n    \"\"\"\n    >>> from charm.toolbox.pairinggroup import PairingGroup,GT\n    >>> group = PairingGroup('SS512')\n    >>> cpabe = CPabe09(group)\n    >>> msg = group.random(GT)\n    >>> (master_secret_key, master_public_key) = cpabe.setup()\n    >>> policy = '((ONE or THREE) and (TWO or FOUR))'\n    >>> attr_list = ['THREE', 'ONE', 'TWO']\n    >>> secret_key = cpabe.keygen(master_public_key, master_secret_key, attr_list)\n    >>> cipher_text = cpabe.encrypt(master_public_key, msg, policy)\n    >>> decrypted_msg = cpabe.decrypt(master_public_key, secret_key, cipher_text)\n    >>> decrypted_msg == msg\n    True\n    \"\"\"\n    \n    def __init__(self, groupObj):\n        ABEnc.__init__(self)\n        global util, group\n        util = SecretUtil(groupObj, debug)        \n        group = groupObj\n                        \n    def setup(self):\n        g1, g2 = group.random(G1), group.random(G2)\n        alpha, a = group.random(), group.random()        \n        e_gg_alpha = pair(g1,g2) ** alpha\n        msk = {'g1^alpha':g1 ** alpha, 'g2^alpha':g2 ** alpha}        \n        pk = {'g1':g1, 'g2':g2, 'e(gg)^alpha':e_gg_alpha, 'g1^a':g1 ** a, 'g2^a':g2 ** a}\n        return (msk, pk)\n    \n    def keygen(self, pk, msk, attributes):        \n        t = group.random()\n        K = msk['g2^alpha'] * (pk['g2^a'] ** t)\n        L = pk['g2'] ** t\n        k_x = [group.hash(unicode(s), G1) ** t for s in attributes]\n        \n        K_x = {}\n        for i in range(0, len(k_x)):\n            K_x[ attributes[i] ] = k_x[i]    \n\n        attributes = [unicode(a) for a in attributes]\n\n        key = { 'K':K, 'L':L, 'K_x':K_x, 'attributes':attributes }\n        return key\n    \n    def encrypt(self, pk, M, policy_str):\n        # Extract the attributes as a list\n        policy = util.createPolicy(policy_str)        \n        p_list = util.getAttributeList(policy)\n        s = group.random()\n        C_tilde = (pk['e(gg)^alpha'] ** s) * M\n        C_0 = pk['g1'] ** s\n        C, D = {}, {}\n        secret = s\n        shares = util.calculateSharesList(secret, policy)\n\n        # ciphertext\n        for i in range(len(p_list)):\n            r = group.random()\n            if shares[i][0] == p_list[i]:\n               attr = shares[i][0].getAttribute() \n               C[ p_list[i] ] = ((pk['g1^a'] ** shares[i][1]) * (group.hash(attr, G1) ** -r))\n               D[ p_list[i] ] = (pk['g2'] ** r)\n        \n        if debug: print(\"SessionKey: %s\" % C_tilde)\n        return { 'C0':C_0, 'C':C, 'D':D , 'C_tilde':C_tilde, 'policy':unicode(policy_str), 'attribute':p_list }\n    \n    def decrypt(self, pk, sk, ct):\n        policy = util.createPolicy(ct['policy'])\n        pruned = util.prune(policy, sk['attributes'])\n        if pruned == False:\n            return False\n        coeffs = util.getCoefficients(policy)\n        numerator = pair(ct['C0'], sk['K'])\n        \n        # create list for attributes in order...\n        k_x, w_i = {}, {}\n        for i in pruned:\n            j = i.getAttributeAndIndex()\n            k = i.getAttribute()\n            k_x[ j ] = sk['K_x'][k]\n            w_i[ j ] = coeffs[j]\n            #print('Attribute %s: coeff=%s, k_x=%s' % (j, w_i[j], k_x[j]))\n            \n        C, D = ct['C'], ct['D']\n        denominator = 1\n        for i in pruned:\n            j = i.getAttributeAndIndex()\n            denominator *= ( pair(C[j] ** w_i[j], sk['L']) * pair(k_x[j] ** w_i[j], D[j]) )   \n        return ct['C_tilde'] / (numerator / denominator)\n\ndef main():\n    #Get the eliptic curve with the bilinear mapping feature needed.\n    groupObj = PairingGroup('SS512')\n\n    cpabe = CPabe09(groupObj)\n    (msk, pk) = cpabe.setup()\n\n    pol = '((ONE or THREE) and (TWO or FOUR))'\n    attr_list = ['THREE', 'ONE', 'TWO']\n    attr_list2 = ['THREE', 'TWO', 'FOUR']\n\n\n\n    if debug: print('Acces Policy: %s' % pol)\n    if debug: print('User1 credential list: %s' % attr_list)\n    if debug: print('User2 credential list: %s' % attr_list2)\n    \n\n    m = groupObj.random(GT)\n\n    cpkey = cpabe.keygen(pk, msk, attr_list)\n    cpkey2 = cpabe.keygen(pk, msk, attr_list2)\n\n\n    if debug: print(\"\\nSecret key1: %s\" % attr_list)\n    if debug: print(\"Secret key2: %s\\n\" % attr_list2)\n    if debug:groupObj.debug(cpkey)\n    if debug:groupObj.debug(cpkey2)\n\n    cipher = cpabe.encrypt(pk, m, pol)\n\n    if debug: print(\"\\nCiphertext...\")\n    if debug: print(\"\\nEncrypted text: %s\\n\" % cipher)\n\n    if debug:groupObj.debug(cipher)\n    orig_m = cpabe.decrypt(pk, cpkey2, cipher)\n\n    assert m == orig_m, 'FAILED Decryption!!!'\n    if debug: print('Successful Decryption!')\n    del groupObj\n\nif __name__ == '__main__':\n    debug = True\n    main()\n",
+			"file": "abenc_waters09.py",
+			"file_size": 5453,
+			"file_write_time": 130541254585783335,
+			"settings":
+			{
+				"buffer_size": 5453,
+				"line_ending": "Unix"
+			}
+		}
+	],
+	"build_system": "",
+	"command_palette":
+	{
+		"height": 0.0,
+		"selected_items":
+		[
+		],
+		"width": 0.0
+	},
+	"console":
+	{
+		"height": 0.0,
+		"history":
+		[
+		]
+	},
+	"distraction_free":
+	{
+		"menu_visible": true,
+		"show_minimap": false,
+		"show_open_files": false,
+		"show_tabs": false,
+		"side_bar_visible": false,
+		"status_bar_visible": false
+	},
+	"file_history":
+	[
+		"/home/andkof/Downloads/Charm-Crypto-0.42/charm/schemes/abenc/abenc_waters09.py",
+		"/home/andkof/.config/sublime-text-3/Packages/SublimePythonIDE/SublimePython.sublime-settings",
+		"/home/andkof/Downloads/Charm-Crypto-0.42/charm/schemes/abenc/abenc_waters09.sublime-project",
+		"/home/andkof/.config/sublime-text-3/Packages/SublimeRope/SublimeRope.sublime-settings",
+		"/home/andkof/.config/sublime-text-3/Packages/SublimeRope/Default (Linux).sublime-keymap",
+		"/home/andkof/.config/sublime-text-3/Packages/Default/Default (Linux).sublime-keymap",
+		"/home/andkof/.config/sublime-text-3/Packages/SublimeRope/README.markdown",
+		"/home/andkof/Downloads/Charm-Crypto-0.42/charm/schemes/abenc/abenc_lsw08.py"
+	],
+	"find":
+	{
+		"height": 35.0
+	},
+	"find_in_files":
+	{
+		"height": 0.0,
+		"where_history":
+		[
+		]
+	},
+	"find_state":
+	{
+		"case_sensitive": false,
+		"find_history":
+		[
+			": ",
+			"ctrl+r",
+			"dasd"
+		],
+		"highlight": true,
+		"in_selection": false,
+		"preserve_case": false,
+		"regex": false,
+		"replace_history":
+		[
+		],
+		"reverse": false,
+		"show_context": true,
+		"use_buffer2": true,
+		"whole_word": false,
+		"wrap": true
+	},
+	"groups":
+	[
+		{
+			"selected": 0,
+			"sheets":
+			[
+				{
+					"buffer": 0,
+					"file": "abenc_waters09.py",
+					"semi_transient": false,
+					"settings":
+					{
+						"buffer_size": 5453,
+						"regions":
+						{
+						},
+						"selection":
+						[
+							[
+								4793,
+								4793
+							]
+						],
+						"settings":
+						{
+							"syntax": "Packages/Python/Python.tmLanguage",
+							"tab_size": 4,
+							"translate_tabs_to_spaces": true
+						},
+						"translation.x": 0.0,
+						"translation.y": 2091.0,
+						"zoom_level": 1.0
+					},
+					"stack_index": 0,
+					"type": "text"
+				}
+			]
+		}
+	],
+	"incremental_find":
+	{
+		"height": 25.0
+	},
+	"input":
+	{
+		"height": 0.0
+	},
+	"layout":
+	{
+		"cells":
+		[
+			[
+				0,
+				0,
+				1,
+				1
+			]
+		],
+		"cols":
+		[
+			0.0,
+			1.0
+		],
+		"rows":
+		[
+			0.0,
+			1.0
+		]
+	},
+	"menu_visible": true,
+	"output.exec":
+	{
+		"height": 334.0
+	},
+	"output.find_results":
+	{
+		"height": 0.0
+	},
+	"project": "abenc_waters09.sublime-project",
+	"replace":
+	{
+		"height": 46.0
+	},
+	"save_all_on_build": true,
+	"select_file":
+	{
+		"height": 0.0,
+		"selected_items":
+		[
+		],
+		"width": 0.0
+	},
+	"select_project":
+	{
+		"height": 0.0,
+		"selected_items":
+		[
+		],
+		"width": 0.0
+	},
+	"select_symbol":
+	{
+		"height": 0.0,
+		"selected_items":
+		[
+		],
+		"width": 0.0
+	},
+	"settings":
+	{
+	},
+	"show_minimap": true,
+	"show_open_files": false,
+	"show_tabs": true,
+	"side_bar_visible": true,
+	"side_bar_width": 150.0,
+	"status_bar_visible": true,
+	"template_settings":
+	{
+	}
+}
