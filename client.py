@@ -1,15 +1,15 @@
-import socket, select, string, sys, os
+import socket, select, string, sys, os, base64
 from charm.toolbox.pairinggroup import PairingGroup,ZR,G1,G2,GT,pair
 from charm.schemes.abenc import abenc_waters09
 from charm.core.engine.util import objectToBytes,bytesToObject
+from Crypto.Cipher import AES
+from Crypto import Random
+from charm.core.math.pairing import hashPair as sha1
 
 
 
-def prompt(msg=None) :
-    if msg:
-        sys.stdout.write(msg)
-    else:
-        sys.stdout.write('<You> ')
+def prompt() :
+    sys.stdout.write('<You> ')
     sys.stdout.flush()
 
 
@@ -19,6 +19,47 @@ def encapsulate(cpkey):
     print('Random group object  {} \n Policy: {}'.format(key, policy))
     return key, cpabe.encrypt(pk, key, policy)
 
+def generateSessionKey(encaps):
+    key=""
+    for encap in encaps:
+        key = key + sha1(cpabe.decrypt(pk, cpkey, encap))
+    return key
+"""
+def encrypt(key, raw):
+    raw = pad(raw)
+    iv = Random.new().read(AES.block_size)
+    cipher = AES.new(key, AES.MODE_CBC, iv)
+    return base64.b64encode(iv + cipher.encrypt(raw))
+
+def decrypt(key, enc):
+    enc = base64.b64decode(enc)
+    iv = enc[:AES.block_size]
+    cipher = AES.new(key, AES.MODE_CBC, iv)
+    return unpad(cipher.decrypt(enc[AES.block_size:])).decode('utf-8')
+
+def pad(self, s):
+    return s + (16 - len(s) % 16) * chr(16 - len(s) % 16)
+
+def unpad(s):
+    return s[:-ord(s[len(s)-1:])]
+"""
+BS = 16
+pad = lambda s: s + (BS - len(s) % BS) * chr(BS - len(s) % BS) 
+unpad = lambda s : s[0:-ord(s[-1])]
+
+def encrypt(key, raw ):
+    raw = pad(raw)
+    iv = Random.new().read( AES.block_size )
+    cipher = AES.new(key, AES.MODE_CBC, iv )
+    return base64.b64encode( iv + cipher.encrypt( raw ) ) 
+
+def decrypt( self, enc ):
+    enc = base64.b64decode(enc)
+    iv = enc[:16]
+    cipher = AES.new(key, AES.MODE_CBC, iv )
+    return unpad(cipher.decrypt( enc[16:] ))
+
+
 
 #main function
 if __name__ == '__main__':
@@ -26,8 +67,8 @@ if __name__ == '__main__':
 
     cpabe = abenc_waters09.CPabe09(groupObj)
     #While testing clients create their own keys.
-    attr_dict = {'Anders': ['THREE', 'ONE', 'TWO'], 'Alice': ['THREE', 'TWO', 'FOUR'], 'Bob': ['ONE', 'THREE', 'FIVE']}
-    (msk, pk) = cpabe.setup()
+    #attr_dict = {'Anders': ['THREE', 'ONE', 'TWO'], 'Alice': ['THREE', 'TWO', 'FOUR'], 'Bob': ['ONE', 'THREE', 'FIVE', 'TWO']}
+    #(msk, pk) = cpabe.setup()
     policy=''
 
     if(len(sys.argv) < 3) :
@@ -37,60 +78,73 @@ if __name__ == '__main__':
     host = sys.argv[1]
     port = int(sys.argv[2])
      
-    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    s.settimeout(2)
-    prompt("Who are You?: ")
+    server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    server.settimeout(2)
+    print("Who are You?: ")
     nickName = sys.stdin.readline().strip()
-    cpkey = cpabe.keygen(pk, msk, attr_dict[nickName])
+    #cpkey = cpabe.keygen(pk, msk, attr_dict[nickName])
 
-    #modes: 1 - key exchange, 2 - chat
-    mode = 1
+
 
 
     # connect to remote host
     try :
-        s.connect((host, port))
-        policy = s.recv(4096)
+        server.connect((host, port))
+        policy = server.recv(4096)
         print('Received policy: {}'.format(policy))
+        pk = bytesToObject(server.recv(4096), groupObj)
+        cpkey = bytesToObject(server.recv(4096), groupObj)
+        print('attribute key:  {}'.format(cpkey))
     except :
         print 'Unable to connect'
         sys.exit()
      
     print 'Connected to remote host. Uploading and downloading encapsulations'
     key, encap = encapsulate(cpkey)
-    s.send(objectToBytes(encap, groupObj))
+    server.send(objectToBytes(encap, groupObj))
     print('Encaplsulation sent: {}'.format(encap))
-    encapsulations = bytesToObject(s.recv(4096), groupObj)
-    print('Encapsulations received: {}'.format(encapsulations))
+    #encapsulations = bytesToObject(server.recv(4096), groupObj)
+    #print('Encapsulations received: {}'.format(encapsulations))
+    
+    key = None
+#    key = generateSessionKey(encapsulations)[:16]
+    AESobj = None 
 
 
-
-    mode=2
     print 'Connected to remote host. Chat initialized'
     prompt()
 
-    while 1 and mode==2:
-        socket_list = [sys.stdin, s]
+    while 1:
+        socket_list = [sys.stdin, server]
          
         # Get the list sockets which are readable
         read_sockets, write_sockets, error_sockets = select.select(socket_list , [], [])
          
         for sock in read_sockets:
             #incoming message from remote server
-            if sock == s:
+            if sock == server:
                 data = sock.recv(4096)
                 if not data :
                     print '\nDisconnected from chat server'
                     sys.exit()
+                elif data == "1000001":
+                    encapsulations = bytesToObject(server.recv(4096), groupObj)
+                    print('Encapsulations received: {}'.format(len(encapsulations)))
+                    key = generateSessionKey(encapsulations)[:16]
+                    print('Genmerated session key: {}'.format(key))
+                    AESobj = AES.new(key, AES.MODE_CBC, 'This is an IV456')
+
                 else :
                     #print data
-                    sys.stdout.write(data)
+                    sender = data.split("]",1)[0] + "]"
+                    msg = data.split("]",1)[1]
+                    sys.stdout.write(sender + "   " + decrypt(key, msg))
                     prompt()
              
             #user entered a message
             else :
                 msg = sys.stdin.readline()
-                s.send(msg)
+                server.send(encrypt(key, msg.encode('utf-8')))
                 prompt()
 
 

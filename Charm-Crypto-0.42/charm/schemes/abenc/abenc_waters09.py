@@ -31,7 +31,7 @@ class CPabe09(ABEnc):
     >>> secret_key = cpabe.keygen(master_public_key, master_secret_key, attr_list)
     >>> cipher_text = cpabe.encrypt(master_public_key, msg, policy)
     >>> decrypted_msg = cpabe.decrypt(master_public_key, secret_key, cipher_text)
-    >>> decrypted_msg == msg|
+    >>> decrypted_msg == msg
     True
     """
     

@@ -31,7 +31,7 @@ class CPabe09(ABEnc):
     >>> secret_key = cpabe.keygen(master_public_key, master_secret_key, attr_list)
     >>> cipher_text = cpabe.encrypt(master_public_key, msg, policy)
     >>> decrypted_msg = cpabe.decrypt(master_public_key, secret_key, cipher_text)
-    >>> decrypted_msg == msg
+    >>> decrypted_msg == msg|
     True
     """
     
@@ -116,21 +116,36 @@ def main():
 
     cpabe = CPabe09(groupObj)
     (msk, pk) = cpabe.setup()
+
     pol = '((ONE or THREE) and (TWO or FOUR))'
     attr_list = ['THREE', 'ONE', 'TWO']
+    attr_list2 = ['THREE', 'TWO', 'FOUR']
+
+
 
     if debug: print('Acces Policy: %s' % pol)
-    if debug: print('User credential list: %s' % attr_list)
+    if debug: print('User1 credential list: %s' % attr_list)
+    if debug: print('User2 credential list: %s' % attr_list2)
+    
+
     m = groupObj.random(GT)
 
     cpkey = cpabe.keygen(pk, msk, attr_list)
-    if debug: print("\nSecret key: %s" % attr_list)
+    cpkey2 = cpabe.keygen(pk, msk, attr_list2)
+
+
+    if debug: print("\nSecret key1: %s" % attr_list)
+    if debug: print("Secret key2: %s\n" % attr_list2)
     if debug:groupObj.debug(cpkey)
+    if debug:groupObj.debug(cpkey2)
+
     cipher = cpabe.encrypt(pk, m, pol)
 
     if debug: print("\nCiphertext...")
+    if debug: print("\nEncrypted text: %s\n" % cipher)
+
     if debug:groupObj.debug(cipher)
-    orig_m = cpabe.decrypt(pk, cpkey, cipher)
+    orig_m = cpabe.decrypt(pk, cpkey2, cipher)
 
     assert m == orig_m, 'FAILED Decryption!!!'
     if debug: print('Successful Decryption!')
