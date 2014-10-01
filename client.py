@@ -19,30 +19,15 @@ def encapsulate(cpkey):
     print('Random group object  {} \n Policy: {}'.format(key, policy))
     return key, cpabe.encrypt(pk, key, policy)
 
+def xorString(a,b): #TODO: fix to be bitvise xor of strings, then convert back to string of length 16 bit
+    return a+b
+
 def generateSessionKey(encaps):
-    key=""
+    key="asdfqqqqqqqqqqqq"
     for encap in encaps:
-        key = key + sha1(cpabe.decrypt(pk, cpkey, encap))
+        key = xorString(key,sha1(cpabe.decrypt(pk, cpkey, encap)))
     return key
-"""
-def encrypt(key, raw):
-    raw = pad(raw)
-    iv = Random.new().read(AES.block_size)
-    cipher = AES.new(key, AES.MODE_CBC, iv)
-    return base64.b64encode(iv + cipher.encrypt(raw))
 
-def decrypt(key, enc):
-    enc = base64.b64decode(enc)
-    iv = enc[:AES.block_size]
-    cipher = AES.new(key, AES.MODE_CBC, iv)
-    return unpad(cipher.decrypt(enc[AES.block_size:])).decode('utf-8')
-
-def pad(self, s):
-    return s + (16 - len(s) % 16) * chr(16 - len(s) % 16)
-
-def unpad(s):
-    return s[:-ord(s[len(s)-1:])]
-"""
 BS = 16
 pad = lambda s: s + (BS - len(s) % BS) * chr(BS - len(s) % BS) 
 unpad = lambda s : s[0:-ord(s[-1])]
@@ -60,15 +45,11 @@ def decrypt( self, enc ):
     return unpad(cipher.decrypt( enc[16:] ))
 
 
-
 #main function
 if __name__ == '__main__':
     groupObj = PairingGroup('SS512')
 
     cpabe = abenc_waters09.CPabe09(groupObj)
-    #While testing clients create their own keys.
-    #attr_dict = {'Anders': ['THREE', 'ONE', 'TWO'], 'Alice': ['THREE', 'TWO', 'FOUR'], 'Bob': ['ONE', 'THREE', 'FIVE', 'TWO']}
-    #(msk, pk) = cpabe.setup()
     policy=''
 
     if(len(sys.argv) < 3) :
@@ -82,10 +63,6 @@ if __name__ == '__main__':
     server.settimeout(2)
     print("Who are You?: ")
     nickName = sys.stdin.readline().strip()
-    #cpkey = cpabe.keygen(pk, msk, attr_dict[nickName])
-
-
-
 
     # connect to remote host
     try :
@@ -105,7 +82,7 @@ if __name__ == '__main__':
     print('Encaplsulation sent: {}'.format(encap))
     #encapsulations = bytesToObject(server.recv(4096), groupObj)
     #print('Encapsulations received: {}'.format(encapsulations))
-    
+    encapsulations=[]
     key = None
 #    key = generateSessionKey(encapsulations)[:16]
     AESobj = None 
@@ -127,10 +104,20 @@ if __name__ == '__main__':
                 if not data :
                     print '\nDisconnected from chat server'
                     sys.exit()
-                elif data == "1000001":
-                    encapsulations = bytesToObject(server.recv(4096), groupObj)
+                elif data[:7] == "1000001":
+                    print('DATA RECEIVED:   {}'.format(data))
+
+                    for i in xrange(0,int(data[7])): 
+                        try: 
+                            encapsulations.append(bytesToObject(server.recv(4096), groupObj))
+                            print('received encap number {}'.format(i))
+                        except:
+                            print("RECEIVE ENCAP EXCEPTION ON RUN # {}".format(i))
+                            continue
+
                     print('Encapsulations received: {}'.format(len(encapsulations)))
-                    key = generateSessionKey(encapsulations)[:16]
+                    
+                    key = generateSessionKey(encapsulations)[-16:]
                     print('Genmerated session key: {}'.format(key))
                     AESobj = AES.new(key, AES.MODE_CBC, 'This is an IV456')
 

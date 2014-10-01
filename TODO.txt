@@ -1,0 +1,4 @@
+-Should only send the missing encapsulations, not all.
+-Register nicknames.
+-Fix Xor function to xor string bitvise then transform back to 16-bit string
+

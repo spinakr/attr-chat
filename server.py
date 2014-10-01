@@ -1,4 +1,4 @@
-import socket, select, json
+import socket, select, json, time
 from charm.toolbox.pairinggroup import PairingGroup,ZR,G1,G2,GT,pair
 from charm.schemes.abenc import abenc_waters09
 from charm.core.engine.util import objectToBytes,bytesToObject
@@ -18,6 +18,7 @@ def broadcast (sock, message):
                 if socket in CONNECTION_LIST:
                     CONNECTION_LIST.remove(socket)
 
+
 def removeUser(sock):
     broadcast_data(sock, "Client (%s, %s) is offline" % addr)
     print "Client (%s, %s) is offline" % addr
@@ -27,7 +28,7 @@ def removeUser(sock):
 
      
 if __name__ == '__main__':
-    attr_dict = [['THREE', 'ONE', 'TWO'], ['THREE', 'TWO', 'FOUR'], ['ONE', 'THREE', 'FIVE', 'TWO']]
+    attr_dict = [['THREE', 'ONE', 'TWO'], ['THREE', 'TWO', 'FOUR'], ['ONE', 'THREE', 'FOUR'], ['ONE', 'TWO', 'FIVE']]
     i=0
     groupObj = PairingGroup('SS512')
 
@@ -66,12 +67,16 @@ if __name__ == '__main__':
                 sockfd.send(roomPolicy) #send the room policy
                 sockfd.send(objectToBytes(pk,groupObj))
                 sockfd.send(objectToBytes(cpabe.keygen(pk, msk, attr_dict[i]),groupObj))
-                i=+1
+                print('USED ATTR SET # {}'.format(i))
+                i+=1
                 encap = bytesToObject(sockfd.recv(RECV_BUFFER), groupObj) #receive the encapsulation
                 #print 'Received one encapsulation: {}'.format(encap)
                 encapsulations.append(encap) #add the encapsulation to current list
-                broadcast(sock, "1000001")
-                broadcast(sock, objectToBytes(encapsulations, groupObj)) #send all the current encapsulations
+                broadcast(sock, "1000001"+str(len(encapsulations)))
+                for j in xrange(0,len(encapsulations)):
+                    time.sleep(1)
+                    broadcast(sock, objectToBytes(encapsulations[j], groupObj)) #send all the current encapsulations
+                    print('Send encapsulation number {} of {}'.format(j,len(encapsulations)))
                 print "Client {} connected".format(addr)
                  
                 #broadcast(sockfd, "{} entered room\n".format(addr))
