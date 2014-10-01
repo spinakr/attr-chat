@@ -82,7 +82,7 @@ if __name__ == '__main__':
     print('Encaplsulation sent: {}'.format(encap))
     #encapsulations = bytesToObject(server.recv(4096), groupObj)
     #print('Encapsulations received: {}'.format(encapsulations))
-    encapsulations=[]
+    #encapsulations=[]
     key = None
 #    key = generateSessionKey(encapsulations)[:16]
     AESobj = None 
@@ -106,7 +106,7 @@ if __name__ == '__main__':
                     sys.exit()
                 elif data[:7] == "1000001":
                     print('DATA RECEIVED:   {}'.format(data))
-
+                    encapsulations = []
                     for i in xrange(0,int(data[7])): 
                         try: 
                             encapsulations.append(bytesToObject(server.recv(4096), groupObj))
