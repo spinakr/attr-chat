@@ -1,4 +1,5 @@
--Should only send the missing encapsulations, not all.
+-Should only send the missing encapsulations, not all. Send these as a set not one by one - Raised EOF error earlier.
 -Register nicknames.
 -Fix Xor function to xor string bitvise then transform back to 16-bit string
+
 

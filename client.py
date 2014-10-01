@@ -112,7 +112,8 @@ if __name__ == '__main__':
                             encapsulations.append(bytesToObject(server.recv(4096), groupObj))
                             print('received encap number {}'.format(i))
                         except:
-                            print("RECEIVE ENCAP EXCEPTION ON RUN # {}".format(i))
+                            print("RECEIVE ENCAP EXCEPTION ON RUN # {}, RETRYING ONCE".format(i))
+                            encapsulations.append(bytesToObject(server.recv(4096), groupObj))
                             continue
 
                     print('Encapsulations received: {}'.format(len(encapsulations)))

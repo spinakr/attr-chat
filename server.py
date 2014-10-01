@@ -74,7 +74,7 @@ if __name__ == '__main__':
                 encapsulations.append(encap) #add the encapsulation to current list
                 broadcast(sock, "1000001"+str(len(encapsulations)))
                 for j in xrange(0,len(encapsulations)):
-                    time.sleep(1)
+                    time.sleep(0.1)
                     broadcast(sock, objectToBytes(encapsulations[j], groupObj)) #send all the current encapsulations
                     print('Send encapsulation number {} of {}'.format(j,len(encapsulations)))
                 print "Client {} connected".format(addr)
